@@ -1,78 +1,62 @@
 import { Router, Request, Response } from 'express';
 import { verifyOperatorMiddleware, AuthenticatedRequest } from '../lib/verify-operator';
 import { writeAuditLog, getRecentAuditLogs } from '../lib/audit';
-import { adminDb } from '../lib/firebase-admin';
-import firebaseConfig from '../firebase-applet-config.json' with { type: 'json' };
-import { INITIAL_CLINICS, INITIAL_TICKETS, INITIAL_ANNOUNCEMENTS, INITIAL_INVOICES } from '../src/data/mockData';
+import { adminDb, databaseId, projectId } from '../lib/firebase-admin';
 
 const router = Router();
 
 // ==========================================
 // 0. DIAGNOSTIC ENDPOINT (/api/diagnostic)
-// Bypasses operator middleware to verify pure Admin SDK write/delete
+// Tests Admin SDK write, readback, and delete operations end-to-end.
+// Returns JSON detailing status or exact error code/message without masking.
 // ==========================================
 router.get('/diagnostic', async (req: Request, res: Response) => {
-  try {
-    const testDoc = await adminDb.collection('_diagnostics').add({
-      ts: new Date().toISOString(),
-      triggeredBy: 'SRE_Admin_SDK_Diagnostic'
-    });
-    await testDoc.delete();
+  let docRef: any = null;
+  const hasPrivateKey = !!process.env.FIREBASE_PRIVATE_KEY;
+  const hasClientEmail = !!process.env.FIREBASE_CLIENT_EMAIL;
+  const hasProjectId = !!process.env.FIREBASE_PROJECT_ID;
 
-    res.json({
+  try {
+    const ts = Date.now();
+    docRef = await adminDb.collection('_diag').add({ ts });
+    
+    const snap = await docRef.get();
+    if (!snap.exists) {
+      throw new Error('Diagnostic document readback returned empty snapshot.');
+    }
+    
+    await docRef.delete();
+
+    return res.json({
       ok: true,
-      project: firebaseConfig.projectId,
-      databaseId: firebaseConfig.firestoreDatabaseId || '(default)',
-      message: 'Admin SDK connected and verified write/delete permissions.'
+      errorCode: null,
+      errorMessage: null,
+      projectId: projectId,
+      databaseId: databaseId,
+      hasPrivateKey,
+      hasClientEmail,
+      hasProjectId
     });
   } catch (err: any) {
-    console.error('Admin SDK Diagnostic Failed:', err);
-    res.status(500).json({
+    if (docRef) {
+      try { await docRef.delete(); } catch (_) {}
+    }
+
+    return res.json({
       ok: false,
-      error: err?.message || 'Unknown error',
-      code: err?.code || 'ADMIN_SDK_ERROR',
-      project: firebaseConfig.projectId
+      errorCode: err?.code ?? err?.status ?? 'UNKNOWN_ERROR',
+      errorMessage: err?.message ?? String(err),
+      projectId: projectId,
+      databaseId: databaseId,
+      hasPrivateKey,
+      hasClientEmail,
+      hasProjectId
     });
   }
 });
 
 // Apply operator verification middleware to all remaining /api routes
 router.use(verifyOperatorMiddleware);
-
-// --- SEED DATABASE UTILITY (If Firestore collections are empty) ---
-async function ensureDatabaseSeeded() {
-  try {
-    const clinicsSnap = await adminDb.collection('clinics').limit(1).get();
-    if (clinicsSnap.empty) {
-      console.log('🌱 Seeding initial clinics and system data into Firestore via Admin SDK...');
-      const batch = adminDb.batch();
-
-      INITIAL_CLINICS.forEach(c => {
-        batch.set(adminDb.collection('clinics').doc(c.id), c);
-      });
-
-      INITIAL_TICKETS.forEach(t => {
-        batch.set(adminDb.collection('tickets').doc(t.id), t);
-      });
-
-      INITIAL_ANNOUNCEMENTS.forEach(a => {
-        batch.set(adminDb.collection('announcements').doc(a.id), a);
-      });
-
-      INITIAL_INVOICES.forEach(inv => {
-        batch.set(adminDb.collection('invoices').doc(inv.id), inv);
-      });
-
-      await batch.commit();
-      console.log('✅ Database successfully seeded with practice data via Admin SDK!');
-    }
-  } catch (err) {
-    console.error('Database seed check error:', err);
-  }
-}
-
-// Ensure database has data on route load
-ensureDatabaseSeeded();
 
 // ==========================================
 // 1. CLINIC REGISTRY ENDPOINTS (/api/clinics)
@@ -84,7 +68,6 @@ router.get('/clinics', async (req: AuthenticatedRequest, res: Response) => {
     const impersonatingClinicId = req.impersonatingClinicId;
 
     if (impersonatingClinicId) {
-      // Scoped read while impersonating
       const doc = await adminDb.collection('clinics').doc(impersonatingClinicId).get();
       if (!doc.exists) {
         return res.json({ clinics: [] });
@@ -100,7 +83,7 @@ router.get('/clinics', async (req: AuthenticatedRequest, res: Response) => {
     const clinics = snapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() }));
     res.json({ clinics });
   } catch (err: any) {
-    res.status(500).json({ error: 'Failed to fetch clinics', message: err?.message });
+    res.status(500).json({ error: 'Failed to fetch clinics', message: err?.message || String(err) });
   }
 });
 
@@ -138,9 +121,10 @@ router.post('/clinics', async (req: AuthenticatedRequest, res: Response) => {
       notes: notes || ''
     };
 
+    // 1. Write clinic document to Firestore
     await adminDb.collection('clinics').doc(newId).set(newClinic);
 
-    // Write required audit log entry via Admin SDK
+    // 2. Write required audit log entry via Admin SDK
     await writeAuditLog({
       operatorUid: operator.uid,
       operatorEmail: operator.email,
@@ -158,7 +142,7 @@ router.post('/clinics', async (req: AuthenticatedRequest, res: Response) => {
 
     res.status(201).json({ clinic: newClinic });
   } catch (err: any) {
-    res.status(500).json({ error: 'Failed to provision clinic', message: err?.message });
+    res.status(500).json({ error: 'Failed to provision clinic', message: err?.message || String(err) });
   }
 });
 
@@ -182,7 +166,7 @@ router.patch('/clinics/:id/status', async (req: AuthenticatedRequest, res: Respo
 
     res.json({ success: true, id, status });
   } catch (err: any) {
-    res.status(500).json({ error: 'Failed to update clinic status', message: err?.message });
+    res.status(500).json({ error: 'Failed to update clinic status', message: err?.message || String(err) });
   }
 });
 
@@ -211,7 +195,7 @@ router.patch('/clinics/:id/plan', async (req: AuthenticatedRequest, res: Respons
 
     res.json({ success: true, id, planTier, mrr });
   } catch (err: any) {
-    res.status(500).json({ error: 'Failed to update clinic plan', message: err?.message });
+    res.status(500).json({ error: 'Failed to update clinic plan', message: err?.message || String(err) });
   }
 });
 
@@ -247,7 +231,7 @@ router.post('/impersonate/start', async (req: AuthenticatedRequest, res: Respons
 
     res.json({ success: true, clinicId, message: `Started impersonation session for clinic ${clinicId}` });
   } catch (err: any) {
-    res.status(500).json({ error: 'Failed to start impersonation', message: err?.message });
+    res.status(500).json({ error: 'Failed to start impersonation', message: err?.message || String(err) });
   }
 });
 
@@ -270,7 +254,7 @@ router.post('/impersonate/end', async (req: AuthenticatedRequest, res: Response)
 
     res.json({ success: true, message: 'Impersonation session ended.' });
   } catch (err: any) {
-    res.status(500).json({ error: 'Failed to end impersonation', message: err?.message });
+    res.status(500).json({ error: 'Failed to end impersonation', message: err?.message || String(err) });
   }
 });
 
@@ -290,7 +274,7 @@ router.get('/tickets', async (req: AuthenticatedRequest, res: Response) => {
 
     res.json({ tickets });
   } catch (err: any) {
-    res.status(500).json({ error: 'Failed to fetch tickets', message: err?.message });
+    res.status(500).json({ error: 'Failed to fetch tickets', message: err?.message || String(err) });
   }
 });
 
@@ -312,7 +296,7 @@ router.post('/tickets/:id/reply', async (req: AuthenticatedRequest, res: Respons
     const newMsg = {
       id: `msg-${Date.now()}`,
       senderName: isInternalNote ? 'Internal Staff' : `${operator.name}`,
-      senderRole: 'operator_support',
+      senderRole: 'operator_support' as const,
       senderEmail: operator.email,
       timestamp: new Date().toISOString(),
       text,
@@ -337,7 +321,7 @@ router.post('/tickets/:id/reply', async (req: AuthenticatedRequest, res: Respons
 
     res.json({ success: true, message: newMsg });
   } catch (err: any) {
-    res.status(500).json({ error: 'Failed to reply to ticket', message: err?.message });
+    res.status(500).json({ error: 'Failed to reply to ticket', message: err?.message || String(err) });
   }
 });
 
@@ -352,7 +336,7 @@ router.get('/announcements', async (req: AuthenticatedRequest, res: Response) =>
     const announcements = snapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() }));
     res.json({ announcements });
   } catch (err: any) {
-    res.status(500).json({ error: 'Failed to fetch announcements', message: err?.message });
+    res.status(500).json({ error: 'Failed to fetch announcements', message: err?.message || String(err) });
   }
 });
 
@@ -388,7 +372,7 @@ router.post('/announcements', async (req: AuthenticatedRequest, res: Response) =
 
     res.status(201).json({ announcement: newAnc });
   } catch (err: any) {
-    res.status(500).json({ error: 'Failed to publish announcement', message: err?.message });
+    res.status(500).json({ error: 'Failed to publish announcement', message: err?.message || String(err) });
   }
 });
 
@@ -403,7 +387,7 @@ router.get('/invoices', async (req: AuthenticatedRequest, res: Response) => {
     const invoices = snapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() }));
     res.json({ invoices });
   } catch (err: any) {
-    res.status(500).json({ error: 'Failed to fetch invoices', message: err?.message });
+    res.status(500).json({ error: 'Failed to fetch invoices', message: err?.message || String(err) });
   }
 });
 
@@ -429,7 +413,7 @@ router.post('/invoices/:id/retry', async (req: AuthenticatedRequest, res: Respon
 
     res.json({ success: true, id, status: 'paid' });
   } catch (err: any) {
-    res.status(500).json({ error: 'Failed to retry invoice charge', message: err?.message });
+    res.status(500).json({ error: 'Failed to retry invoice charge', message: err?.message || String(err) });
   }
 });
 
@@ -443,7 +427,7 @@ router.get('/audit-logs', async (req: AuthenticatedRequest, res: Response) => {
     const logs = await getRecentAuditLogs(50);
     res.json({ auditLogs: logs });
   } catch (err: any) {
-    res.status(500).json({ error: 'Failed to fetch audit logs', message: err?.message });
+    res.status(500).json({ error: 'Failed to fetch audit logs', message: err?.message || String(err) });
   }
 });
 
