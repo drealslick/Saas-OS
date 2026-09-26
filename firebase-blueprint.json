@@ -1,0 +1,120 @@
+{
+  "entities": {
+    "Clinic": {
+      "title": "Clinic",
+      "description": "Chiropractic practice tenant schema",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "doctorName": { "type": "string" },
+        "ownerEmail": { "type": "string" },
+        "phone": { "type": "string" },
+        "city": { "type": "string" },
+        "state": { "type": "string" },
+        "planTier": { "type": "string", "enum": ["starter", "pro", "agency"] },
+        "mrr": { "type": "number" },
+        "status": { "type": "string", "enum": ["active", "trial", "suspended"] },
+        "createdAt": { "type": "string" },
+        "lastActive": { "type": "string" },
+        "patientCount": { "type": "number" },
+        "ehrIntegration": { "type": "string" },
+        "smsQuotaUsed": { "type": "number" },
+        "smsQuotaTotal": { "type": "number" },
+        "notes": { "type": "string" }
+      },
+      "required": ["id", "name", "doctorName", "ownerEmail", "planTier", "mrr", "status"]
+    },
+    "SupportTicket": {
+      "title": "SupportTicket",
+      "description": "Clinic support inquiry thread",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "clinicId": { "type": "string" },
+        "clinicName": { "type": "string" },
+        "senderEmail": { "type": "string" },
+        "subject": { "type": "string" },
+        "category": { "type": "string" },
+        "priority": { "type": "string" },
+        "status": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "clinicId", "subject", "category", "status"]
+    },
+    "GlobalAnnouncement": {
+      "title": "GlobalAnnouncement",
+      "description": "Broadcast notice sent to clinic dashboards",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "type": { "type": "string" },
+        "targetAudience": { "type": "string" },
+        "active": { "type": "boolean" },
+        "createdAt": { "type": "string" },
+        "readCount": { "type": "number" },
+        "authorName": { "type": "string" }
+      },
+      "required": ["id", "title", "message", "type", "active"]
+    },
+    "Invoice": {
+      "title": "Invoice",
+      "description": "Billing transaction entry",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "clinicId": { "type": "string" },
+        "clinicName": { "type": "string" },
+        "amount": { "type": "number" },
+        "status": { "type": "string" },
+        "date": { "type": "string" },
+        "dueDate": { "type": "string" },
+        "planTier": { "type": "string" },
+        "paymentMethod": { "type": "string" },
+        "invoiceNumber": { "type": "string" }
+      },
+      "required": ["id", "clinicId", "amount", "status", "invoiceNumber"]
+    },
+    "OperatorAuditLog": {
+      "title": "OperatorAuditLog",
+      "description": "Back-office operator audit trail log",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "operatorUid": { "type": "string" },
+        "operatorEmail": { "type": "string" },
+        "action": { "type": "string" },
+        "targetType": { "type": "string" },
+        "targetId": { "type": "string" },
+        "metadata": { "type": "object" },
+        "serverTimestamp": { "type": "string" }
+      },
+      "required": ["operatorUid", "operatorEmail", "action", "targetType", "targetId"]
+    }
+  },
+  "firestore": {
+    "/clinics/{clinicId}": {
+      "schema": { "$ref": "#/entities/Clinic" },
+      "description": "Clinics collection"
+    },
+    "/tickets/{ticketId}": {
+      "schema": { "$ref": "#/entities/SupportTicket" },
+      "description": "Support tickets collection"
+    },
+    "/announcements/{announcementId}": {
+      "schema": { "$ref": "#/entities/GlobalAnnouncement" },
+      "description": "Global announcements collection"
+    },
+    "/invoices/{invoiceId}": {
+      "schema": { "$ref": "#/entities/Invoice" },
+      "description": "Invoices collection"
+    },
+    "/operator_audit_log/{logId}": {
+      "schema": { "$ref": "#/entities/OperatorAuditLog" },
+      "description": "Operator audit log collection"
+    }
+  }
+}

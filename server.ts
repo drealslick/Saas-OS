@@ -1,7 +1,9 @@
 import express, { Request, Response } from 'express';
+import cookieParser from 'cookie-parser';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
 import dotenv from 'dotenv';
+import apiRoutes from './routes/apiRoutes';
 
 dotenv.config();
 
@@ -9,6 +11,10 @@ const app = express();
 const PORT = 3000;
 
 app.use(express.json());
+app.use(cookieParser());
+
+// Mount Backend Firebase Admin API Routes (Verification, Audit Log, Clinics, Impersonation)
+app.use('/api', apiRoutes);
 
 // Initialize Gemini Client
 const getGenAI = () => {

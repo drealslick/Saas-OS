@@ -1,0 +1,60 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default deny all unhandled collections
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // 1. Operator Audit Log: STRICT ZERO TRUST (Bypassed ONLY by Admin SDK)
+    match /operator_audit_log/{id} {
+      allow read, write: if false;
+    }
+
+    // 2. Clinics Collection: Tenant isolated
+    match /clinics/{clinicId} {
+      allow read: if isSignedIn() && (
+        request.auth.token.superAdmin == true ||
+        request.auth.token.clinicId == clinicId ||
+        resource.data.ownerEmail == request.auth.token.email
+      );
+      allow write: if isSignedIn() && request.auth.token.superAdmin == true;
+    }
+
+    // 3. Support Tickets Collection: Tenant isolated
+    match /tickets/{id} {
+      allow read: if isSignedIn() && (
+        request.auth.token.superAdmin == true ||
+        resource.data.clinicId == request.auth.token.clinicId ||
+        resource.data.senderEmail == request.auth.token.email
+      );
+      allow create: if isSignedIn();
+      allow update: if isSignedIn() && (
+        request.auth.token.superAdmin == true ||
+        resource.data.senderEmail == request.auth.token.email
+      );
+      allow delete: if false;
+    }
+
+    // 4. Global Announcements: Public read, no client write
+    match /announcements/{id} {
+      allow read: if true;
+      allow write: if false; // Admin SDK only
+    }
+
+    // 5. Invoices: Tenant isolated
+    match /invoices/{id} {
+      allow read: if isSignedIn() && (
+        request.auth.token.superAdmin == true ||
+        resource.data.clinicId == request.auth.token.clinicId
+      );
+      allow write: if false; // Admin SDK only
+    }
+  }
+}

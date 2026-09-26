@@ -36,7 +36,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenSearch }) => {
   const hasDegradedService = services.some(s => s.status !== 'operational');
 
   interface TabItem {
-    id: 'clinics' | 'revenue' | 'health' | 'support' | 'announcements';
+    id: 'clinics' | 'revenue' | 'health' | 'support' | 'announcements' | 'audit_logs';
     label: string;
     icon: React.ComponentType<{ className?: string }>;
     badge?: string | number;
@@ -48,7 +48,8 @@ export const Header: React.FC<HeaderProps> = ({ onOpenSearch }) => {
     { id: 'revenue', label: 'Revenue & MRR Ledger', icon: DollarSign, badge: `$${totalMrr.toLocaleString()}` },
     { id: 'health', label: 'System Health', icon: Activity, badge: hasDegradedService ? 'Degraded' : '99.98%', badgeColor: hasDegradedService ? 'bg-amber-500/20 text-amber-300' : 'bg-emerald-500/20 text-emerald-300' },
     { id: 'support', label: 'Support Inbox', icon: Inbox, badge: openTicketsCount, badgeColor: openTicketsCount > 0 ? 'bg-rose-500/20 text-rose-300 ring-1 ring-rose-500/30' : 'bg-slate-800 text-slate-400' },
-    { id: 'announcements', label: 'Announcements', icon: Megaphone }
+    { id: 'announcements', label: 'Announcements', icon: Megaphone },
+    { id: 'audit_logs', label: 'Audit Logs', icon: ShieldCheck }
   ];
 
   return (
