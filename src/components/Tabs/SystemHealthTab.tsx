@@ -149,7 +149,7 @@ export const SystemHealthTab: React.FC = () => {
             <div>
               <h4 className="font-bold text-teal-300 mb-2 uppercase tracking-wider text-[10px]">Recommended Action Items:</h4>
               <ul className="space-y-1.5">
-                {aiAnalysis.actionItems.map((item, idx) => (
+                {(aiAnalysis.actionItems || []).map((item, idx) => (
                   <li key={idx} className="flex items-center space-x-2 text-slate-200 bg-slate-950 p-2.5 rounded-lg border border-slate-800">
                     <CheckCircle2 className="w-4 h-4 text-teal-400 shrink-0" />
                     <span>{item}</span>
